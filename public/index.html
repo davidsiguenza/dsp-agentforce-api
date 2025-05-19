@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Salesforce Multi-Agent Chat</title>
+  <style>
+    body { margin: 0; padding: 10px; font-family: Arial, sans-serif; background-color: #f0f0f0; }
+    .chat-container { border: 1px solid #ccc; margin-bottom: 20px; background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .chat-container h2 { margin-top: 0; color: #1798c1; }
+    .chatbox { height: 300px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
+    .controls input[type="text"] { width: calc(100% - 250px); padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; margin-right: 5px;}
+    .controls button { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px; margin-right: 5px; }
+    .controls button.primary { background-color: #1798c1; color: #fff; }
+    .controls button.secondary { background-color: #999; color: #fff; }
+    .mic-button { background-color: grey; border-radius: 50%; padding: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .mic-button.active { background-color: red; }
+    .mic-button svg { width: 20px; height: 20px; fill: white; }
+    .switch { position: relative; display: inline-block; width: 50px; height: 24px; vertical-align: middle; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #1798c1; }
+    input:checked + .slider:before { transform: translateX(26px); }
+    .userMsgContainer, .botMsgContainer { display: flex; align-items: flex-start; margin: 8px 0; }
+    .userMsgContainer { justify-content: flex-end; }
+    .botMsgBubble, .userMsgBubble { max-width: 70%; border: 1px solid #dcdcdc; border-radius: 6px; padding: 10px; margin: 0 6px; font-size: 14px; }
+    .userMsgBubble { background: #e1f5fe; }
+    .botMsgBubble { background: #edf8fa; }
+    .userImg, .botImg { width: 36px; height: 36px; border-radius: 50%; }
+    .infoMsg { color: #666; font-style: italic; font-size: 13px; text-align: center; margin: 8px 0; width: 100%; }
+    .config-inputs { margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap; }
+    .config-inputs input { padding:8px; border:1px solid #ccc; border-radius:4px; }
+  </style>
+</head>
+<body>
+
+  <h1>Demostración Multi-Agente</h1>
+
+  <div class="chat-container" id="agent1Container">
+    <h2>Agente de Ventas</h2>
+    <div class="config-inputs">
+        <input type="text" id="agent1AiId" placeholder="AI Agent ID" value="YOUR_SALES_AGENT_ID_HERE">
+        <input type="text" id="agent1InstanceEndpoint" placeholder="Instance Endpoint URL" value="https://your-salesforce-domain.my.salesforce.com">
+        <input type="text" id="agent1TokenUrl" placeholder="Salesforce Token URL (opcional)" value="https://your-salesforce-domain.my.salesforce.com/services/oauth2/token">
+        <input type="text" id="agent1ApiBaseUrl" placeholder="Salesforce API Base URL (opcional)" value="https://api.salesforce.com">
+    </div>
+    <div class="chatbox" id="chatboxAgent1"></div>
+    <div class="controls">
+      <input type="text" id="userInputAgent1" placeholder="Escribe un mensaje..." />
+      <button class="primary" onclick="chatInstances['agent1'].sendMessage()">Enviar</button>
+      <button class="secondary" onclick="chatInstances['agent1'].endSession()">Finalizar</button>
+      <button id="dictationBtnAgent1" class="mic-button" onclick="chatInstances['agent1'].toggleDictation()">
+        <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM19 10v1a7 7 0 0 1-14 0v-1M12 19l-4 4M16 23h-8"></path></svg>
+      </button>
+      <label class="switch">
+        <input type="checkbox" id="toggleVoiceAgent1" onchange="chatInstances['agent1'].toggleVoiceResponse(this.checked)" checked>
+        <span class="slider"></span>
+      </label>
+      <span class="voiceToggleLabel">Voz</span>
+    </div>
+    <button onclick="chatInstances['agent1'].initialize()">Iniciar Chat Agente 1</button>
+  </div>
+
+  <div class="chat-container" id="agent2Container">
+    <h2>Agente de Soporte</h2>
+     <div class="config-inputs">
+        <input type="text" id="agent2AiId" placeholder="AI Agent ID" value="YOUR_SUPPORT_AGENT_ID_HERE">
+        <input type="text" id="agent2InstanceEndpoint" placeholder="Instance Endpoint URL" value="https://your-salesforce-domain.my.salesforce.com">
+        <input type="text" id="agent2TokenUrl" placeholder="Salesforce Token URL (opcional)" value="https://your-salesforce-domain.my.salesforce.com/services/oauth2/token">
+        <input type="text" id="agent2ApiBaseUrl" placeholder="Salesforce API Base URL (opcional)" value="https://api.salesforce.com">
+    </div>
+    <div class="chatbox" id="chatboxAgent2"></div>
+    <div class="controls">
+      <input type="text" id="userInputAgent2" placeholder="Escribe un mensaje..." />
+      <button class="primary" onclick="chatInstances['agent2'].sendMessage()">Enviar</button>
+      <button class="secondary" onclick="chatInstances['agent2'].endSession()">Finalizar</button>
+       <button id="dictationBtnAgent2" class="mic-button" onclick="chatInstances['agent2'].toggleDictation()">
+        <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM19 10v1a7 7 0 0 1-14 0v-1M12 19l-4 4M16 23h-8"></path></svg>
+      </button>
+      <label class="switch">
+        <input type="checkbox" id="toggleVoiceAgent2" onchange="chatInstances['agent2'].toggleVoiceResponse(this.checked)" checked>
+        <span class="slider"></span>
+      </label>
+      <span class="voiceToggleLabel">Voz</span>
+    </div>
+     <button onclick="chatInstances['agent2'].initialize()">Iniciar Chat Agente 2</button>
+  </div>
+
+  <script>
+    const serverBaseUrl = ""; // Vacío si el frontend se sirve desde el mismo dominio y puerto que el backend (Heroku default)
+                                 // o http://localhost:3000 durante el desarrollo local si son servidores separados.
+
+    // Almacén para instancias de chat
+    const chatInstances = {};
+
+    class ChatInstance {
+      constructor(instanceId, config) {
+        this.instanceId = instanceId;
+        this.config = config; // { aiIdElement, instanceEndpointElement, tokenUrlElement, apiBaseUrlElement, chatboxElement, userInputElement, dictationBtnElement, toggleVoiceElement }
+        this.sessionId = null;
+        this.accessToken = null; // Cada instancia podría tener su token si las URLs de token varían, o compartir uno global.
+        this.enableVoiceResponse = true;
+        this.recognition = null;
+        this.isDictating = false;
+        
+        this.ui = {
+            aiIdInput: document.getElementById(config.aiIdElement),
+            instanceEndpointInput: document.getElementById(config.instanceEndpointElement),
+            tokenUrlInput: document.getElementById(config.tokenUrlElement),
+            apiBaseUrlInput: document.getElementById(config.apiBaseUrlElement),
+            chatbox: document.getElementById(config.chatboxElement),
+            userInput: document.getElementById(config.userInputElement),
+            dictationBtn: document.getElementById(config.dictationBtnElement),
+            toggleVoiceCheckbox: document.getElementById(config.toggleVoiceElement)
+        };
+        this.ui.toggleVoiceCheckbox.checked = this.enableVoiceResponse;
+      }
+
+      displayMessage(sender, message, isUser = false, isInfo = false) {
+        const formattedMessage = isInfo ? message : this.formatBotResponse(message);
+        const alignClass = isUser ? "userMsgContainer" : "botMsgContainer";
+        const bubbleClass = isUser ? "userMsgBubble" : "botMsgBubble";
+        const imgSrc = isUser ? "https://cdn-icons-png.flaticon.com/512/847/847969.png" : "https://wp.salesforce.com/en-us/wp-content/uploads/sites/4/2024/09/img-agent-1.webp";
+        
+        if (isInfo) {
+            this.ui.chatbox.innerHTML += `<p class='infoMsg'>${message}</p>`;
+        } else {
+            this.ui.chatbox.innerHTML += `
+            <div class="${alignClass}">
+                ${!isUser ? `<img class="botImg" src="${imgSrc}" alt="Bot Icon" />` : ''}
+                <div class="${bubbleClass}">
+                <strong>${sender}:</strong> ${formattedMessage}
+                </div>
+                ${isUser ? `<img class="userImg" src="${imgSrc}" alt="User Icon" />` : ''}
+            </div>`;
+        }
+        this.ui.chatbox.scrollTop = this.ui.chatbox.scrollHeight;
+      }
+      
+      formatBotResponse(text) {
+        let formatted = String(text).replace(/((http|https):\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+        formatted = formatted.replace(/\n/g, '<br/>');
+        return formatted;
+      }
+
+      async initialize() {
+        this.displayMessage('System', `Inicializando chat para ${this.instanceId}...`, false, true);
+        // 1. Obtener Access Token (podría ser global o por instancia si es necesario)
+        // Para este ejemplo, cada instancia obtiene su propio token si la URL es diferente o no hay uno global válido.
+        // Una mejora sería tener un gestor de tokens global que maneje la expiración.
+        try {
+            const tokenUrl = this.ui.tokenUrlInput.value || undefined; // undefined para usar el default del server
+            const response = await fetch(`${serverBaseUrl}/get-token`, { 
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ salesforceTokenUrl: tokenUrl })
+            });
+            if (!response.ok) throw new Error(`Error obteniendo token: ${response.statusText}`);
+            const data = await response.json();
+            this.accessToken = data.accessToken;
+            this.displayMessage('System', 'Token de acceso obtenido.', false, true);
+            this.createChatSession();
+        } catch (err) {
+            console.error(`[${this.instanceId}] Error al obtener token:`, err);
+            this.displayMessage('System', `Error al obtener token: ${err.message}`, false, true);
+        }
+      }
+
+      async createChatSession() {
+        if (!this.accessToken) {
+            this.displayMessage('System', 'Token de acceso no disponible para iniciar sesión.', false, true);
+            return;
+        }
+        const aiAgentId = this.ui.aiIdInput.value;
+        const instanceEndpoint = this.ui.instanceEndpointInput.value;
+        const salesforceApiBaseUrl = this.ui.apiBaseUrlInput.value || undefined;
+
+        if (!aiAgentId || !instanceEndpoint) {
+            this.displayMessage('System', 'AI Agent ID y Instance Endpoint son requeridos.', false, true);
+            return;
+        }
+        
+        try {
+          const response = await fetch(`${serverBaseUrl}/start-session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                aiAgentId, 
+                instanceEndpoint,
+                salesforceApiBaseUrl // Opcional, el servidor usará un default si no se provee
+            })
+          });
+          if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: response.statusText }));
+              throw new Error(`Error iniciando sesión: ${errorData.error || response.statusText}`);
+          }
+          const data = await response.json();
+          this.sessionId = data.sessionId;
+          this.displayMessage('System', `Sesión creada. ID: ${this.sessionId}`, false, true);
+        } catch (err) {
+          console.error(`[${this.instanceId}] Error al iniciar sesión:`, err);
+          this.displayMessage('System', `Error al iniciar sesión: ${err.message}`, false, true);
+        }
+      }
+
+      async sendMessage() {
+        const messageText = this.ui.userInput.value.trim();
+        if (!this.sessionId) {
+          this.displayMessage('System', "Sesión no inicializada.", false, true);
+          return;
+        }
+        if (!messageText) return;
+
+        this.displayMessage("Tú", messageText, true);
+        this.ui.userInput.value = "";
+        const botTypingId = `botTyping-${this.instanceId}`;
+        this.displayMessage('System', `<p id="${botTypingId}" class='infoMsg'>Respondiendo...</p>`, false, true);
+
+        const aiAgentId = this.ui.aiIdInput.value; // Necesario para la lógica del servidor
+        const salesforceApiBaseUrl = this.ui.apiBaseUrlInput.value || undefined;
+
+        try {
+          const response = await fetch(`${serverBaseUrl}/send-message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                message: { text: messageText }, 
+                sessionId: this.sessionId,
+                aiAgentId: aiAgentId, // Enviar el aiAgentId correcto
+                salesforceApiBaseUrl
+            })
+          });
+          
+          const typingElement = document.getElementById(botTypingId);
+          if (typingElement) typingElement.parentElement.remove(); // Remover el div contenedor del mensaje 'infoMsg'
+
+          if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: response.statusText }));
+              throw new Error(`Error enviando mensaje: ${errorData.error || response.statusText}`);
+          }
+          const data = await response.json();
+          
+          let botResponse = "No se recibió respuesta del bot.";
+          // Adaptar según la estructura de la respuesta de Salesforce
+          if (data.messages && data.messages.length > 0 && data.messages[0].message && data.messages[0].message.text) {
+            botResponse = data.messages[0].message.text;
+          } else if (data.messages && data.messages.length > 0 && typeof data.messages[0].message === 'string') { // fallback si es solo texto
+            botResponse = data.messages[0].message;
+          }
+
+
+          this.displayMessage(this.config.botName || "Bot", botResponse);
+
+          if (this.enableVoiceResponse) {
+            this.synthesizeAndPlay(botResponse);
+          }
+        } catch (error) {
+          console.error(`[${this.instanceId}] Error al enviar mensaje:`, error);
+          const typingElement = document.getElementById(botTypingId);
+          if (typingElement) typingElement.parentElement.remove();
+          this.displayMessage(this.config.botName || "Bot", `Error: no se pudo obtener respuesta. ${error.message}`);
+        }
+      }
+      
+      async synthesizeAndPlay(text) {
+          try {
+            const response = await fetch(`${serverBaseUrl}/synthesize`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: text, voiceId: this.config.voiceId || 'Lucia' }) // Permitir voiceId configurable por instancia
+            });
+            if (!response.ok) throw new Error('Fallo la síntesis de voz');
+            const blob = await response.blob();
+            const audioURL = URL.createObjectURL(blob);
+            const audio = new Audio(audioURL);
+            audio.play();
+          } catch (error) {
+              console.error(`[${this.instanceId}] Error en TTS:`, error);
+              this.displayMessage('System', 'Error al reproducir respuesta.', false, true);
+          }
+      }
+
+      async endSession() {
+        if (!this.sessionId) {
+          this.displayMessage('System', "No hay sesión activa para finalizar.", false, true);
+          return;
+        }
+        const aiAgentId = this.ui.aiIdInput.value; // Necesario para la lógica del servidor
+        const salesforceApiBaseUrl = this.ui.apiBaseUrlInput.value || undefined;
+        try {
+          await fetch(`${serverBaseUrl}/end-session`, { 
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                sessionId: this.sessionId,
+                aiAgentId: aiAgentId, // Enviar el aiAgentId correcto
+                salesforceApiBaseUrl
+            })
+          });
+          this.displayMessage('System', "Sesión finalizada.", false, true);
+          this.sessionId = null;
+        } catch (error) {
+          console.error(`[${this.instanceId}] Error al finalizar sesión:`, error);
+          this.displayMessage('System', `Error al finalizar sesión: ${error.message}`, false, true);
+        }
+      }
+      
+      toggleVoiceResponse(isChecked) {
+        this.enableVoiceResponse = isChecked;
+      }
+
+      toggleDictation() {
+        if (!('SpeechRecognition'in window) && !('webkitSpeechRecognition'in window)) {
+          alert("Reconocimiento de voz no soportado.");
+          return;
+        }
+        if (!this.isDictating) {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          this.recognition = new SpeechRecognition();
+          this.recognition.lang = 'es-ES'; // Configurable si es necesario
+          this.recognition.start();
+          this.isDictating = true;
+          this.ui.dictationBtn.classList.add("active");
+          this.recognition.onresult = (event) => {
+            this.ui.userInput.value = event.results[0][0].transcript;
+          };
+          this.recognition.onerror = (event) => {
+            console.error(`[${this.instanceId}] Error de dictado:`, event.error);
+            this.isDictating = false;
+            this.ui.dictationBtn.classList.remove("active");
+          };
+          this.recognition.onend = () => {
+            this.isDictating = false;
+            this.ui.dictationBtn.classList.remove("active");
+          };
+        } else {
+          this.recognition.stop();
+        }
+      }
+    }
+
+    // Crear instancias de Chat
+    window.onload = () => {
+      chatInstances['agent1'] = new ChatInstance('agent1', {
+        aiIdElement: 'agent1AiId',
+        instanceEndpointElement: 'agent1InstanceEndpoint',
+        tokenUrlElement: 'agent1TokenUrl',
+        apiBaseUrlElement: 'agent1ApiBaseUrl',
+        chatboxElement: 'chatboxAgent1',
+        userInputElement: 'userInputAgent1',
+        dictationBtnElement: 'dictationBtnAgent1',
+        toggleVoiceElement: 'toggleVoiceAgent1',
+        botName: 'Agente Ventas' // Nombre personalizado para este bot
+      });
+
+      chatInstances['agent2'] = new ChatInstance('agent2', {
+        aiIdElement: 'agent2AiId',
+        instanceEndpointElement: 'agent2InstanceEndpoint',
+        tokenUrlElement: 'agent2TokenUrl',
+        apiBaseUrlElement: 'agent2ApiBaseUrl',
+        chatboxElement: 'chatboxAgent2',
+        userInputElement: 'userInputAgent2',
+        dictationBtnElement: 'dictationBtnAgent2',
+        toggleVoiceElement: 'toggleVoiceAgent2',
+        botName: 'Agente Soporte',
+        voiceId: 'Conchita' // Voz diferente para este agente
+      });
+
+      // Podrías auto-inicializar los chats o requerir un clic en "Iniciar Chat"
+      // chatInstances['agent1'].initialize();
+      // chatInstances['agent2'].initialize();
+    };
+  </script>
+</body>
+</html>
